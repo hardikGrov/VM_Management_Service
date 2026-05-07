@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 
-from app.core.exceptions import VMNotFoundError, VMOperationError
-from app.models.vm import VMCreate, VMRecord, VMState
+from app.core.exceptions import VMInvalidStateError, VMOperationError
+from app.models.vm import TaskStatus, VMCreate, VMRecord, VMState
 from app.repositories.task_repository import TaskRepository
 from app.repositories.vm_repository import VMRepositoryError, VMRepositoryNotFoundError
 from app.services.vm_service import VMService
@@ -82,5 +82,42 @@ def test_service_maps_provider_errors() -> None:
             await service.create_vm(
                 VMCreate(name="api-01", image="ubuntu-24.04", cpu_count=2, memory_mb=4096)
             )
+
+    asyncio.run(run_test())
+
+
+def test_service_rejects_invalid_stop_transition() -> None:
+    async def run_test() -> None:
+        service = VMService(repository=FakeVMRepository(), task_repository=TaskRepository())
+        payload = VMCreate(name="api-01", image="ubuntu-24.04", cpu_count=2, memory_mb=4096)
+        accepted = await service.create_vm(payload)
+
+        with pytest.raises(VMInvalidStateError):
+            await service.stop_vm(accepted.vm_id)
+
+    asyncio.run(run_test())
+
+
+def test_service_marks_failed_provisioning_task() -> None:
+    async def run_test() -> None:
+        class FailingProvisionRepository(FakeVMRepository):
+            async def provision_vm(self, vm_id: str, payload: VMCreate) -> VMRecord:
+                raise VMRepositoryError("quota exceeded")
+
+        task_repository = TaskRepository()
+        service = VMService(
+            repository=FailingProvisionRepository(),
+            task_repository=task_repository,
+        )
+        payload = VMCreate(name="api-01", image="ubuntu-24.04", cpu_count=2, memory_mb=4096)
+        accepted = await service.create_vm(payload)
+
+        await service.provision_vm(accepted.task_id, accepted.vm_id, payload)
+
+        task = await service.get_task(accepted.task_id)
+        status = await service.get_vm_status(accepted.vm_id)
+        assert task.status == TaskStatus.ERROR
+        assert task.error is not None
+        assert status.vm.state == VMState.ERROR
 
     asyncio.run(run_test())
