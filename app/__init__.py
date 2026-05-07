@@ -1,2 +1,1 @@
 """VM lifecycle management service."""
-

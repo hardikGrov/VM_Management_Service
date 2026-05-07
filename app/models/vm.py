@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import uuid4
 
@@ -45,7 +45,7 @@ class VMRead(VMBase):
 class VMRecord(VMRead):
     @classmethod
     def create(cls, payload: VMCreate) -> "VMRecord":
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return cls(
             id=str(uuid4()),
             name=payload.name,
@@ -67,7 +67,10 @@ class VMCreateAccepted(BaseModel):
 
 class VMStatusResponse(BaseModel):
     vm: VMRead
-    task: "TaskRead | None" = Field(default=None, description="Latest task associated with this VM.")
+    task: "TaskRead | None" = Field(
+        default=None,
+        description="Latest task associated with this VM.",
+    )
 
 
 class VMOperationResponse(BaseModel):
@@ -97,7 +100,7 @@ class TaskRead(BaseModel):
 class TaskRecord(TaskRead):
     @classmethod
     def create(cls, vm_id: str, status: TaskStatus) -> "TaskRecord":
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return cls(
             task_id=str(uuid4()),
             status=status,

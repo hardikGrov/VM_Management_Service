@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 from collections.abc import Callable, Iterable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import lru_cache
 from time import perf_counter
 from typing import Any, TypeVar
@@ -73,7 +75,12 @@ class OpenStackVMAdapter:
             flavor_id=flavor.id,
             networks=networks or None,
         )
-        server = await self._call("wait_for_server", server.id, self._compute.wait_for_server, server)
+        server = await self._call(
+            "wait_for_server",
+            server.id,
+            self._compute.wait_for_server,
+            server,
+        )
         return self._server_to_domain(server, fallback=payload, flavor=flavor)
 
     async def reserve_vm(self, payload: VMCreate) -> VMRecord:
@@ -106,7 +113,13 @@ class OpenStackVMAdapter:
     async def delete_vm(self, vm_id: str) -> None:
         provider_id = self._provider_ids.get(vm_id, vm_id)
         server = await self._get_server(provider_id)
-        await self._call("delete_server", vm_id, self._compute.delete_server, server, ignore_missing=False)
+        await self._call(
+            "delete_server",
+            vm_id,
+            self._compute.delete_server,
+            server,
+            ignore_missing=False,
+        )
 
     async def start_vm(self, vm_id: str) -> VMRecord:
         provider_id = self._provider_ids.get(vm_id, vm_id)
@@ -130,7 +143,7 @@ class OpenStackVMAdapter:
 
     async def update_vm_state(self, vm_id: str, state: VMState) -> VMRecord:
         vm = await self.get_vm(vm_id)
-        updated = vm.model_copy(update={"state": state, "updated_at": datetime.now(timezone.utc)})
+        updated = vm.model_copy(update={"state": state, "updated_at": datetime.now(UTC)})
         self._reserved[vm_id] = updated
         return updated
 
@@ -189,7 +202,9 @@ class OpenStackVMAdapter:
     async def _find_flavor(self, cpu_count: int, memory_mb: int) -> Any:
         flavors = await self._call("list_flavors", None, lambda: list(self._compute.flavors()))
         for flavor in flavors:
-            if int(getattr(flavor, "vcpus", 0)) == cpu_count and int(getattr(flavor, "ram", 0)) == memory_mb:
+            flavor_vcpus = int(getattr(flavor, "vcpus", 0))
+            flavor_memory = int(getattr(flavor, "ram", 0))
+            if flavor_vcpus == cpu_count and flavor_memory == memory_mb:
                 return flavor
         raise VMOperationError(
             f"No OpenStack flavor matches cpu_count={cpu_count}, memory_mb={memory_mb}."
@@ -207,14 +222,21 @@ class OpenStackVMAdapter:
             ignore_missing=True,
         )
         if network is None:
-            raise VMOperationError(f"OpenStack network '{self._settings.os_network_name}' was not found.")
+            raise VMOperationError(
+                f"OpenStack network '{self._settings.os_network_name}' was not found."
+            )
         return [{"uuid": network.id}]
 
     async def _get_server_flavor(self, server: Any) -> Any | None:
         flavor_id = self._extract_flavor_id(server)
         if not flavor_id:
             return None
-        return await self._call("get_flavor", getattr(server, "id", None), self._compute.get_flavor, flavor_id)
+        return await self._call(
+            "get_flavor",
+            getattr(server, "id", None),
+            self._compute.get_flavor,
+            flavor_id,
+        )
 
     async def _call(
         self,
@@ -250,19 +272,27 @@ class OpenStackVMAdapter:
         fallback: VMCreate | None = None,
         flavor: Any | None = None,
     ) -> VMRecord:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         image = getattr(server, "image", None)
+        image_name = OpenStackVMAdapter._extract_resource_name(
+            image,
+            fallback.image if fallback else "",
+        )
 
         return VMRecord(
-            id=str(getattr(server, "id")),
+            id=str(server.id),
             name=str(getattr(server, "name", fallback.name if fallback else "")),
-            image=OpenStackVMAdapter._extract_resource_name(image, fallback.image if fallback else ""),
+            image=image_name,
             cpu_count=int(getattr(flavor, "vcpus", fallback.cpu_count if fallback else 1)),
             memory_mb=int(getattr(flavor, "ram", fallback.memory_mb if fallback else 512)),
             region=str(getattr(server, "region", fallback.region if fallback else "unknown")),
             state=OpenStackVMAdapter._normalize_state(getattr(server, "status", None)),
-            created_at=OpenStackVMAdapter._parse_datetime(getattr(server, "created_at", None)) or now,
-            updated_at=OpenStackVMAdapter._parse_datetime(getattr(server, "updated_at", None)) or now,
+            created_at=(
+                OpenStackVMAdapter._parse_datetime(getattr(server, "created_at", None)) or now
+            ),
+            updated_at=(
+                OpenStackVMAdapter._parse_datetime(getattr(server, "updated_at", None)) or now
+            ),
         )
 
     @staticmethod

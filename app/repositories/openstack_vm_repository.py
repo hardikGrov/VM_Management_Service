@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.models.vm import VMCreate, VMRecord, VMState
@@ -61,12 +61,12 @@ class OpenStackVMRepository:
 
     @staticmethod
     def _to_record(server: Any, fallback: VMCreate | None = None) -> VMRecord:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         created_at = getattr(server, "created_at", None) or getattr(server, "created", None) or now
         updated_at = getattr(server, "updated_at", None) or getattr(server, "updated", None) or now
 
         return VMRecord(
-            id=str(getattr(server, "id")),
+            id=str(server.id),
             name=str(getattr(server, "name", fallback.name if fallback else "")),
             image=str(getattr(server, "image", fallback.image if fallback else "")),
             cpu_count=int(getattr(server, "cpu_count", fallback.cpu_count if fallback else 1)),

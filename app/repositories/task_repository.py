@@ -1,8 +1,7 @@
+import datetime
 from copy import deepcopy
-from datetime import datetime, timezone
 from threading import RLock
 
-from app.core.exceptions import VMNotFoundError
 from app.models.vm import TaskRead, TaskRecord, TaskStatus
 
 
@@ -21,6 +20,8 @@ class TaskRepository:
         with self._lock:
             task = self._items.get(task_id)
             if task is None:
+                from app.core.exceptions import VMNotFoundError
+
                 raise VMNotFoundError(f"Task '{task_id}' was not found.")
             return deepcopy(task)
 
@@ -40,12 +41,14 @@ class TaskRepository:
         with self._lock:
             task = self._items.get(task_id)
             if task is None:
+                from app.core.exceptions import VMNotFoundError
+
                 raise VMNotFoundError(f"Task '{task_id}' was not found.")
             updated = task.model_copy(
                 update={
                     "status": status,
                     "error": error,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.datetime.now(datetime.UTC),
                 }
             )
             self._items[task_id] = updated
