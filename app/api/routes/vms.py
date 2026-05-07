@@ -32,9 +32,9 @@ VMServiceDep = Annotated[VMService, Depends(get_vm_service)]
     summary="Create a virtual machine",
     responses={status.HTTP_201_CREATED: {"description": "Virtual machine created"}},
 )
-def create_vm(payload: VMCreate, service: VMServiceDep) -> VMRead:
+async def create_vm(payload: VMCreate, service: VMServiceDep) -> VMRead:
     """Create a VM inventory record with validated compute, image, and region settings."""
-    return service.create_vm(payload)
+    return await service.create_vm(payload)
 
 
 @router.get(
@@ -43,9 +43,9 @@ def create_vm(payload: VMCreate, service: VMServiceDep) -> VMRead:
     summary="Get a virtual machine",
     responses={status.HTTP_200_OK: {"description": "Virtual machine details returned"}},
 )
-def get_vm(vm_id: str, service: VMServiceDep) -> VMRead:
+async def get_vm(vm_id: str, service: VMServiceDep) -> VMRead:
     """Return VM details for the supplied VM identifier, or a structured 404 error."""
-    return service.get_vm(vm_id)
+    return await service.get_vm(vm_id)
 
 
 @router.delete(
@@ -55,7 +55,7 @@ def get_vm(vm_id: str, service: VMServiceDep) -> VMRead:
     summary="Delete a virtual machine",
     responses={status.HTTP_200_OK: {"description": "Virtual machine deleted"}},
 )
-def delete_vm(vm_id: str, service: VMServiceDep) -> VMOperationResponse:
+async def delete_vm(vm_id: str, service: VMServiceDep) -> VMOperationResponse:
     """Delete a VM inventory record by identifier, or return a structured 404 error."""
-    vm = service.delete_vm(vm_id)
+    vm = await service.delete_vm(vm_id)
     return VMOperationResponse(vm=vm, message="VM deleted")
