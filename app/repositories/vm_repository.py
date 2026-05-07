@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from threading import RLock
 from typing import Protocol
 
@@ -86,7 +86,7 @@ class InMemoryVMRepository:
             if vm is None:
                 raise VMRepositoryNotFoundError(f"VM '{vm_id}' was not found.")
             updated = vm.model_copy(
-                update={"state": VMState.ACTIVE, "updated_at": datetime.now(timezone.utc)}
+                update={"state": VMState.ACTIVE, "updated_at": datetime.now(UTC)}
             )
             self._items[vm_id] = updated
             return deepcopy(updated)
@@ -103,7 +103,7 @@ class InMemoryVMRepository:
             vm = self._items.get(vm_id)
             if vm is None:
                 raise VMRepositoryNotFoundError(f"VM '{vm_id}' was not found.")
-            updated = vm.model_copy(update={"state": state, "updated_at": datetime.now(timezone.utc)})
+            updated = vm.model_copy(update={"state": state, "updated_at": datetime.now(UTC)})
             self._items[vm_id] = updated
             return deepcopy(updated)
 
