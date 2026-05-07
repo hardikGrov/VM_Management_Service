@@ -6,9 +6,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class VMState(StrEnum):
-    PROVISIONED = "provisioned"
-    RUNNING = "running"
+    PENDING = "pending"
+    PROVISIONING = "provisioning"
+    ACTIVE = "active"
+    ERROR = "error"
+    STOPPING = "stopping"
     STOPPED = "stopped"
+    DELETING = "deleting"
+    DELETED = "deleted"
 
 
 class VMBase(BaseModel):
@@ -48,13 +53,56 @@ class VMRecord(VMRead):
             cpu_count=payload.cpu_count,
             memory_mb=payload.memory_mb,
             region=payload.region,
-            state=VMState.PROVISIONED,
+            state=VMState.PENDING,
             created_at=now,
             updated_at=now,
         )
+
+
+class VMCreateAccepted(BaseModel):
+    task_id: str = Field(description="Provisioning task identifier.")
+    vm_id: str = Field(description="Reserved VM identifier.")
+    status: str = Field(description="Initial task status.")
+
+
+class VMStatusResponse(BaseModel):
+    vm: VMRead
+    task: "TaskRead | None" = Field(default=None, description="Latest task associated with this VM.")
 
 
 class VMOperationResponse(BaseModel):
     message: str = Field(description="Result of the requested lifecycle operation.")
     vm: VMRead
 
+
+class TaskStatus(StrEnum):
+    PROVISIONING = "provisioning"
+    ACTIVE = "active"
+    ERROR = "error"
+    STOPPING = "stopping"
+    STOPPED = "stopped"
+    DELETING = "deleting"
+    DELETED = "deleted"
+
+
+class TaskRead(BaseModel):
+    task_id: str
+    status: TaskStatus
+    vm_id: str
+    error: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class TaskRecord(TaskRead):
+    @classmethod
+    def create(cls, vm_id: str, status: TaskStatus) -> "TaskRecord":
+        now = datetime.now(timezone.utc)
+        return cls(
+            task_id=str(uuid4()),
+            status=status,
+            vm_id=vm_id,
+            error=None,
+            created_at=now,
+            updated_at=now,
+        )

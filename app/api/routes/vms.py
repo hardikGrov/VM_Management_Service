@@ -1,13 +1,15 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, BackgroundTasks, Depends, status
 
 from app.api.dependencies import get_vm_service
 from app.models.errors import ErrorResponse
 from app.models.vm import (
     VMCreate,
+    VMCreateAccepted,
     VMOperationResponse,
     VMRead,
+    VMStatusResponse,
 )
 from app.services.vm_service import VMService
 
@@ -27,14 +29,20 @@ VMServiceDep = Annotated[VMService, Depends(get_vm_service)]
 
 @router.post(
     "",
-    response_model=VMRead,
-    status_code=status.HTTP_201_CREATED,
+    response_model=VMCreateAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
     summary="Create a virtual machine",
-    responses={status.HTTP_201_CREATED: {"description": "Virtual machine created"}},
+    responses={status.HTTP_202_ACCEPTED: {"description": "VM provisioning accepted"}},
 )
-async def create_vm(payload: VMCreate, service: VMServiceDep) -> VMRead:
-    """Create a VM inventory record with validated compute, image, and region settings."""
-    return await service.create_vm(payload)
+async def create_vm(
+    payload: VMCreate,
+    background_tasks: BackgroundTasks,
+    service: VMServiceDep,
+) -> VMCreateAccepted:
+    """Queue VM provisioning and return the task identifier immediately."""
+    accepted = await service.create_vm(payload)
+    background_tasks.add_task(service.provision_vm, accepted.task_id, accepted.vm_id, payload)
+    return accepted
 
 
 @router.get(
@@ -46,6 +54,17 @@ async def create_vm(payload: VMCreate, service: VMServiceDep) -> VMRead:
 async def get_vm(vm_id: str, service: VMServiceDep) -> VMRead:
     """Return VM details for the supplied VM identifier, or a structured 404 error."""
     return await service.get_vm(vm_id)
+
+
+@router.get(
+    "/{vm_id}/status",
+    response_model=VMStatusResponse,
+    summary="Get VM provisioning status",
+    responses={status.HTTP_200_OK: {"description": "VM state and latest task status returned"}},
+)
+async def get_vm_status(vm_id: str, service: VMServiceDep) -> VMStatusResponse:
+    """Return current VM lifecycle state and the latest task associated with the VM."""
+    return await service.get_vm_status(vm_id)
 
 
 @router.delete(

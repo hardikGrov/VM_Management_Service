@@ -8,7 +8,7 @@ client = TestClient(app)
 
 def test_vm_lifecycle() -> None:
     create_response = client.post(
-        "/v1/vms",
+        "/vms",
         json={
             "name": "api-01",
             "image": "ubuntu-24.04",
@@ -18,21 +18,29 @@ def test_vm_lifecycle() -> None:
         },
     )
 
-    assert create_response.status_code == 201
-    vm = create_response.json()
-    assert vm["state"] == "provisioned"
+    assert create_response.status_code == 202
+    accepted = create_response.json()
+    assert accepted["status"] == "provisioning"
 
-    get_response = client.get(f"/v1/vms/{vm['id']}")
+    task_response = client.get(f"/tasks/{accepted['task_id']}")
+    assert task_response.status_code == 200
+    assert task_response.json()["vm_id"] == accepted["vm_id"]
+
+    status_response = client.get(f"/vms/{accepted['vm_id']}/status")
+    assert status_response.status_code == 200
+    assert status_response.json()["vm"]["state"] == "active"
+
+    get_response = client.get(f"/vms/{accepted['vm_id']}")
     assert get_response.status_code == 200
-    assert get_response.json()["id"] == vm["id"]
+    assert get_response.json()["id"] == accepted["vm_id"]
 
-    delete_response = client.delete(f"/v1/vms/{vm['id']}")
+    delete_response = client.delete(f"/vms/{accepted['vm_id']}")
     assert delete_response.status_code == 200
     assert delete_response.json()["message"] == "VM deleted"
 
 
 def test_missing_vm_returns_structured_error() -> None:
-    response = client.get("/v1/vms/missing")
+    response = client.get("/vms/missing")
 
     assert response.status_code == 404
     assert response.json() == {

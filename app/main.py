@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from app.api.routes.tasks import router as task_router
 from app.api.routes.vms import router as vm_router
 from app.core.config import get_settings
 from app.core.error_handlers import register_error_handlers
@@ -39,4 +40,5 @@ async def health_check() -> dict[str, str]:
     return {"status": "ok", "environment": settings.environment}
 
 
-app.include_router(vm_router, prefix="/v1")
+app.include_router(vm_router)
+app.include_router(task_router)

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from threading import RLock
 from typing import Protocol
 
-from app.models.vm import VMCreate, VMRecord
+from app.models.vm import VMCreate, VMRecord, VMState
 
 
 class VMRepositoryError(Exception):
@@ -22,6 +22,10 @@ class VMRepositoryConflictError(VMRepositoryError):
 class VMRepository(Protocol):
     async def create_vm(self, payload: VMCreate) -> VMRecord: ...
 
+    async def reserve_vm(self, payload: VMCreate) -> VMRecord: ...
+
+    async def provision_vm(self, vm_id: str, payload: VMCreate) -> VMRecord: ...
+
     async def get_vm(self, vm_id: str) -> VMRecord: ...
 
     async def list_vms(self) -> Iterable[VMRecord]: ...
@@ -32,6 +36,8 @@ class VMRepository(Protocol):
 
     async def stop_vm(self, vm_id: str) -> VMRecord: ...
 
+    async def update_vm_state(self, vm_id: str, state: VMState) -> VMRecord: ...
+
 
 class InMemoryVMRepository:
     def __init__(self) -> None:
@@ -40,8 +46,22 @@ class InMemoryVMRepository:
 
     async def create_vm(self, payload: VMCreate) -> VMRecord:
         vm = VMRecord.create(payload)
+        vm = vm.model_copy(update={"state": VMState.ACTIVE})
         with self._lock:
             self._items[vm.id] = vm
+            return deepcopy(vm)
+
+    async def reserve_vm(self, payload: VMCreate) -> VMRecord:
+        vm = VMRecord.create(payload)
+        with self._lock:
+            self._items[vm.id] = vm
+            return deepcopy(vm)
+
+    async def provision_vm(self, vm_id: str, payload: VMCreate) -> VMRecord:
+        with self._lock:
+            vm = self._items.get(vm_id)
+            if vm is None:
+                raise VMRepositoryNotFoundError(f"VM '{vm_id}' was not found.")
             return deepcopy(vm)
 
     async def list_vms(self) -> Iterable[VMRecord]:
@@ -59,7 +79,6 @@ class InMemoryVMRepository:
         with self._lock:
             if vm_id not in self._items:
                 raise VMRepositoryNotFoundError(f"VM '{vm_id}' was not found.")
-            del self._items[vm_id]
 
     async def start_vm(self, vm_id: str) -> VMRecord:
         with self._lock:
@@ -67,7 +86,7 @@ class InMemoryVMRepository:
             if vm is None:
                 raise VMRepositoryNotFoundError(f"VM '{vm_id}' was not found.")
             updated = vm.model_copy(
-                update={"state": "running", "updated_at": datetime.now(timezone.utc)}
+                update={"state": VMState.ACTIVE, "updated_at": datetime.now(timezone.utc)}
             )
             self._items[vm_id] = updated
             return deepcopy(updated)
@@ -77,9 +96,14 @@ class InMemoryVMRepository:
             vm = self._items.get(vm_id)
             if vm is None:
                 raise VMRepositoryNotFoundError(f"VM '{vm_id}' was not found.")
-            updated = vm.model_copy(
-                update={"state": "stopped", "updated_at": datetime.now(timezone.utc)}
-            )
+            return deepcopy(vm)
+
+    async def update_vm_state(self, vm_id: str, state: VMState) -> VMRecord:
+        with self._lock:
+            vm = self._items.get(vm_id)
+            if vm is None:
+                raise VMRepositoryNotFoundError(f"VM '{vm_id}' was not found.")
+            updated = vm.model_copy(update={"state": state, "updated_at": datetime.now(timezone.utc)})
             self._items[vm_id] = updated
             return deepcopy(updated)
 
