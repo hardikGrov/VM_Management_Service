@@ -28,3 +28,8 @@ class VMProviderError(AppError):
 class VMOperationError(AppError):
     status_code = HTTPStatus.BAD_GATEWAY
     error_code = "vm_operation_error"
+
+
+class VMInvalidStateError(AppError):
+    status_code = HTTPStatus.CONFLICT
+    error_code = "vm_invalid_state"

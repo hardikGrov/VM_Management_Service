@@ -56,6 +56,8 @@ class OpenStackVMAdapter:
         self._compute = self._connection.compute
         self._network = self._connection.network
         self._storage = self._connection.block_storage
+        self._reserved: dict[str, VMRecord] = {}
+        self._provider_ids: dict[str, str] = {}
 
     async def create_vm(self, payload: VMCreate) -> VMRecord:
         image = await self._find_image(payload.image)
@@ -74,7 +76,21 @@ class OpenStackVMAdapter:
         server = await self._call("wait_for_server", server.id, self._compute.wait_for_server, server)
         return self._server_to_domain(server, fallback=payload, flavor=flavor)
 
+    async def reserve_vm(self, payload: VMCreate) -> VMRecord:
+        vm = VMRecord.create(payload)
+        self._reserved[vm.id] = vm
+        return vm
+
+    async def provision_vm(self, vm_id: str, payload: VMCreate) -> VMRecord:
+        created = await self.create_vm(payload)
+        self._provider_ids[vm_id] = created.id
+        reserved = created.model_copy(update={"id": vm_id, "state": VMState.PROVISIONING})
+        self._reserved[vm_id] = reserved
+        return reserved
+
     async def get_vm(self, vm_id: str) -> VMRecord:
+        if vm_id in self._reserved:
+            return self._reserved[vm_id]
         server = await self._get_server(vm_id)
         flavor = await self._get_server_flavor(server)
         return self._server_to_domain(server, flavor=flavor)
@@ -88,22 +104,35 @@ class OpenStackVMAdapter:
         return records
 
     async def delete_vm(self, vm_id: str) -> None:
-        server = await self._get_server(vm_id)
+        provider_id = self._provider_ids.get(vm_id, vm_id)
+        server = await self._get_server(provider_id)
         await self._call("delete_server", vm_id, self._compute.delete_server, server, ignore_missing=False)
 
     async def start_vm(self, vm_id: str) -> VMRecord:
-        server = await self._get_server(vm_id)
+        provider_id = self._provider_ids.get(vm_id, vm_id)
+        server = await self._get_server(provider_id)
         await self._call("start_server", vm_id, self._compute.start_server, server)
         server = await self._call("wait_for_server", vm_id, self._compute.wait_for_server, server)
         flavor = await self._get_server_flavor(server)
-        return self._server_to_domain(server, flavor=flavor)
+        vm = self._server_to_domain(server, flavor=flavor).model_copy(update={"id": vm_id})
+        self._reserved[vm_id] = vm
+        return vm
 
     async def stop_vm(self, vm_id: str) -> VMRecord:
-        server = await self._get_server(vm_id)
+        provider_id = self._provider_ids.get(vm_id, vm_id)
+        server = await self._get_server(provider_id)
         await self._call("stop_server", vm_id, self._compute.stop_server, server)
         server = await self._call("wait_for_server", vm_id, self._compute.wait_for_server, server)
         flavor = await self._get_server_flavor(server)
-        return self._server_to_domain(server, flavor=flavor)
+        vm = self._server_to_domain(server, flavor=flavor).model_copy(update={"id": vm_id})
+        self._reserved[vm_id] = vm
+        return vm
+
+    async def update_vm_state(self, vm_id: str, state: VMState) -> VMRecord:
+        vm = await self.get_vm(vm_id)
+        updated = vm.model_copy(update={"state": state, "updated_at": datetime.now(timezone.utc)})
+        self._reserved[vm_id] = updated
+        return updated
 
     async def create(self, payload: VMCreate) -> VMRecord:
         return await self.create_vm(payload)
@@ -253,16 +282,16 @@ class OpenStackVMAdapter:
     def _normalize_state(status: Any) -> VMState:
         status_value = str(status or "").lower()
         status_map = {
-            "active": VMState.RUNNING,
-            "running": VMState.RUNNING,
+            "active": VMState.ACTIVE,
+            "running": VMState.ACTIVE,
             "shutoff": VMState.STOPPED,
             "stopped": VMState.STOPPED,
             "paused": VMState.STOPPED,
-            "building": VMState.PROVISIONED,
-            "build": VMState.PROVISIONED,
-            "provisioned": VMState.PROVISIONED,
+            "building": VMState.PROVISIONING,
+            "build": VMState.PROVISIONING,
+            "provisioned": VMState.ACTIVE,
         }
-        return status_map.get(status_value, VMState.PROVISIONED)
+        return status_map.get(status_value, VMState.PENDING)
 
     @staticmethod
     def _parse_datetime(value: Any) -> datetime | None:

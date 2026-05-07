@@ -84,12 +84,12 @@ class OpenStackVMRepository:
 
         state_value = str(state or "").lower()
         provider_state_map = {
-            "active": VMState.RUNNING,
-            "running": VMState.RUNNING,
+            "active": VMState.ACTIVE,
+            "running": VMState.ACTIVE,
             "shutoff": VMState.STOPPED,
             "stopped": VMState.STOPPED,
             "paused": VMState.STOPPED,
-            "building": VMState.PROVISIONED,
-            "provisioned": VMState.PROVISIONED,
+            "building": VMState.PROVISIONING,
+            "provisioned": VMState.ACTIVE,
         }
-        return provider_state_map.get(state_value, VMState.PROVISIONED)
+        return provider_state_map.get(state_value, VMState.PENDING)
