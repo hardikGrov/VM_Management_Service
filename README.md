@@ -124,12 +124,8 @@ ruff format --check .
 ```
 
 ## Backlog / What I'd Build Next
-
 1. Persistent DB with PostgreSQL + SQLAlchemy async: keep VM and task state durable across process restarts and multiple API replicas.
 2. Prometheus `/metrics` endpoint: expose request latency, task durations, provider failures, and VM lifecycle counts for operational visibility.
 3. GitLab CI pipeline: mirror the GitHub Actions lint/test workflow for teams running merge requests in GitLab.
 4. cloud-init support on VM creation: pass user data and metadata into Nova so created VMs can bootstrap themselves safely.
-5. Volume snapshot/backup APIs using Cinder: add snapshot, restore, and backup workflows for persistent VM storage.
-6. Rate limiting + auth middleware: protect provider quotas and expose the service safely to multiple tenants or automation clients.
-7. Task worker extraction: move provisioning from FastAPI `BackgroundTasks` into Celery, Dramatiq, or Arq for retries and horizontal scale.
-8. OpenTelemetry tracing: correlate HTTP requests, task execution, and OpenStack SDK calls across distributed systems.
+5. Rate limiting + auth middleware: protect provider quotas and expose the service safely to multiple tenants or automation clients.
